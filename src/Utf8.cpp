@@ -9,6 +9,25 @@
 
 namespace {
     /**
+     * This is the Unicode replacement character (�) encoded as UTF-8.
+     */
+    const std::vector< uint8_t> UTF8_ENCODED_REPLACEMENT_CHARACTER = { 0xEF, 0xBF, 0xBD };
+
+    /**
+     * Since RFC 3629 (November 2003), the high and low surrogate halves
+     * used by UTF-16 (U+D800 through U+DFFF) and code points not encodable
+     * by UTF-16 (those after U+10FFFF) are not legal Unicode values, and
+     * their UTF-8 encoding must be treated as an invalid byte sequence.
+     */
+    const Utf8::UnicodeCodePoint FIRST_SURROGATE = 0xD800;
+    const Utf8::UnicodeCodePoint LAST_SURROGATE = 0xDFFF;
+
+    /**
+     * This is the last code point in the Unicode that is legal.
+     */
+    const Utf8::UnicodeCodePoint LAST_LEGAL_UNICODE_POINT = 0x10FFFF;
+
+    /**
      * This computes the logarithm (base 2) of the given integer.
      *
      * @param[in] integer
@@ -22,7 +41,7 @@ namespace {
         while (integer > 0)
         {
             ++answer;
-            interger >>= 1;
+            integer >>= 1;
         }
 
         return answer;
@@ -70,18 +89,34 @@ namespace Utf8 {
                 encoding.push_back((UnicodeCodePoint)(((codePoint) & 0x3F)) + 0x80);
             }
             else if (numBits <= 16) {
-                encoding.push_back((UnicodeCodePoint)(((codePoint >> 12) & 0x0F)) + 0xE0);
-                encoding.push_back((UnicodeCodePoint)(((codePoint >> 6) & 0x3F)) + 0x80);
-                encoding.push_back((UnicodeCodePoint)(((codePoint) & 0x3F)) + 0x80);
+                if (
+                    (codePoint >= FIRST_SURROGATE)
+                    && (codePoint <= LAST_SURROGATE)
+                    ) {
+                    (void)encoding.insert(
+                        encoding.end(),
+                        UTF8_ENCODED_REPLACEMENT_CHARACTER.begin(),
+                        UTF8_ENCODED_REPLACEMENT_CHARACTER.end()
+                        );
+                }
+                else {
+                    encoding.push_back((UnicodeCodePoint)(((codePoint >> 12) & 0x0F)) + 0xE0);
+                    encoding.push_back((UnicodeCodePoint)(((codePoint >> 6) & 0x3F)) + 0x80);
+                    encoding.push_back((UnicodeCodePoint)(((codePoint) & 0x3F)) + 0x80);
+                }
             }
-            else if (numBits <= 21) {
+            else if (numBits <= 21 && codePoint <= LAST_LEGAL_UNICODE_POINT) {
                 encoding.push_back((UnicodeCodePoint)(((codePoint >> 18) & 0x07)) + 0xF0);
                 encoding.push_back((UnicodeCodePoint)(((codePoint >> 12) & 0x3F)) + 0x80);
                 encoding.push_back((UnicodeCodePoint)(((codePoint >> 6) & 0x3F)) + 0x80);
                 encoding.push_back((UnicodeCodePoint)(((codePoint) & 0x3F)) + 0x80);
             }
             else {
-                // to do
+                (void)encoding.insert(
+                    encoding.end(),
+                    UTF8_ENCODED_REPLACEMENT_CHARACTER.begin(),
+                    UTF8_ENCODED_REPLACEMENT_CHARACTER.end()
+                );
             }
 
         }
