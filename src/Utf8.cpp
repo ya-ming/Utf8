@@ -14,6 +14,11 @@ namespace {
     const std::vector< uint8_t> UTF8_ENCODED_REPLACEMENT_CHARACTER = { 0xEF, 0xBF, 0xBD };
 
     /**
+     * This is the Unicode replacement character (�) as a code point.
+     */
+    const Utf8::UnicodeCodePoint REPLACEMENT_CHARACTER = 0xFFFD;
+
+    /**
      * Since RFC 3629 (November 2003), the high and low surrogate halves
      * used by UTF-16 (U+D800 through U+DFFF) and code points not encodable
      * by UTF-16 (those after U+10FFFF) are not legal Unicode values, and
@@ -57,7 +62,18 @@ namespace Utf8 {
      * This contains the private properties of a Utf8 instance.
      */
     struct Utf8::Impl {
+        /**
+         * This is where we keep the current character that
+         * is being decoded.
+         */
+        UnicodeCodePoint currentCharacterBeingDecoded = 0;
 
+        /**
+         * This is the number of input bytes that we will
+         * need to read in before we can fully assemble
+         * the current character that is being decoded.
+         */
+        size_t numbytesRemainingToDecode = 0;
     };
 
     Utf8::~Utf8() = default;
@@ -121,5 +137,52 @@ namespace Utf8 {
 
         }
         return encoding;
+    }
+
+    std::vector<UnicodeCodePoint> Utf8::Decode(const std::vector<uint8_t>& encoding) {
+        std::vector<UnicodeCodePoint> output;
+
+        for (auto octet : encoding) {
+            // Determine the number of bytes based on the n higher-order bits set to 1.
+            if (impl_->numbytesRemainingToDecode == 0) {
+                if ((octet & 0x80) == 0) {
+                    output.push_back(octet);
+                }
+                else if ((octet & 0xE0) == 0xC0) {
+                    impl_->numbytesRemainingToDecode = 1;
+                    impl_->currentCharacterBeingDecoded = (octet) & 0x1F;
+                }
+                else if ((octet & 0xF0) == 0xE0) {
+                    impl_->numbytesRemainingToDecode = 2;
+                    impl_->currentCharacterBeingDecoded = (octet) & 0x0F;
+                }
+                else if ((octet & 0xF8) == 0xF0) {
+                    impl_->numbytesRemainingToDecode = 3;
+                    impl_->currentCharacterBeingDecoded = (octet) & 0x07;
+                }
+                else {
+                    output.push_back(REPLACEMENT_CHARACTER);
+                }
+            }
+            else {
+                impl_->currentCharacterBeingDecoded <<= 6;
+                impl_->currentCharacterBeingDecoded += (octet & 0x3F);
+                if (--impl_->numbytesRemainingToDecode == 0) {
+                    output.push_back(impl_->currentCharacterBeingDecoded);
+                    impl_->currentCharacterBeingDecoded = 0;
+                }
+            }
+        }
+
+        return output;
+    }
+
+    std::vector< UnicodeCodePoint > Utf8::Decode(const std::string& encoding) {
+        return Decode(
+            std::vector< uint8_t >(
+                encoding.begin(),
+                encoding.end()
+                )
+        );
     }
 }
