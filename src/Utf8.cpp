@@ -74,6 +74,12 @@ namespace Utf8 {
          * the current character that is being decoded.
          */
         size_t numbytesRemainingToDecode = 0;
+
+        /**
+         * This is the number of bytes total that make
+         * up the current character being decoded.
+         */
+        size_t bytesTotalToDecodeCurrentCharacter = 0;
     };
 
     Utf8::~Utf8() = default;
@@ -163,12 +169,40 @@ namespace Utf8 {
                 else {
                     output.push_back(REPLACEMENT_CHARACTER);
                 }
+                impl_->bytesTotalToDecodeCurrentCharacter = impl_->numbytesRemainingToDecode + 1;
+            }
+            // The following bytes must start with '10xxxxxx',
+            // if not fill output with replacement character.
+            else if ((octet & 0xC0) != 0x80) {
+                output.push_back(REPLACEMENT_CHARACTER);
+                impl_->numbytesRemainingToDecode = 0;
+                const auto nextCodePoints = Decode(std::vector<uint8_t> {octet});
+                output.insert(output.end(), nextCodePoints.begin(), nextCodePoints.end());
             }
             else {
                 impl_->currentCharacterBeingDecoded <<= 6;
                 impl_->currentCharacterBeingDecoded += (octet & 0x3F);
                 if (--impl_->numbytesRemainingToDecode == 0) {
-                    output.push_back(impl_->currentCharacterBeingDecoded);
+                    // Make sure the value of the decoded bytes matches the definition
+                    if (
+                        (
+                        (impl_->bytesTotalToDecodeCurrentCharacter >= 2)
+                            && (impl_->currentCharacterBeingDecoded < 0x0080)
+                            )
+                        || (
+                        (impl_->bytesTotalToDecodeCurrentCharacter >= 3)
+                            && (impl_->currentCharacterBeingDecoded < 0x0800)
+                            )
+                        || (
+                        (impl_->bytesTotalToDecodeCurrentCharacter >= 4)
+                            && (impl_->currentCharacterBeingDecoded < 0x10000)
+                            )
+                        ) {
+                        output.push_back(REPLACEMENT_CHARACTER);
+                    }
+                    else {
+                        output.push_back(impl_->currentCharacterBeingDecoded);
+                    }
                     impl_->currentCharacterBeingDecoded = 0;
                 }
             }
